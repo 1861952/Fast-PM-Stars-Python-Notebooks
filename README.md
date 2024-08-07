@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 
 # Distribution of Brown Dwarfs Based on Apparent Magnitude
 
@@ -38,3 +39,16 @@ It was a great pleasure working with my mentors Kostya Malanchev and Dr. Mandelb
 ## Notes
 Need to include model (incoporate phoenix) for temperatures greater than 2400 K.
 r and i bands not used because not increasing monatonically.
+=======
+## move dN/dm main file outside
+
+## Short description/overview
+## Installation (yaml) pip installs all the packages in conda
+## Models Used
+For effective temperatures greater than 2400K, the [Phoenix Model was used]().
+
+
+## how to run pipeline
+## acknowledgements
+## Notes
+>>>>>>> fc29b72804de05b807473151350113c9f90ba723
