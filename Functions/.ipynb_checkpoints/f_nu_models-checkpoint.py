@@ -53,9 +53,12 @@ def f_lambda_func(wavelength_array):
 def passband_flux(flux, transmissionArr, wavelengthsArr):
     int_n = integrate.trapezoid(flux*transmissionArr/wavelengthsArr.cgs.value, x=wavelengthsArr.cgs.value)
     int_d = integrate.trapezoid(transmissionArr/wavelengthsArr.cgs.value, x=wavelengthsArr.cgs.value)
+    if int_d==0:
+        print(int_d)
     return int_n/int_d
 
-    
+
+
 # Returns and compares calculated values of magnitude
 # f_nu (surface flux), R (radius of star), d (distance from observer to star), and F_0 (zero-point flux) against given "actual" magnitude
 

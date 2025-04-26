@@ -3,15 +3,23 @@ import pandas as pd
 
 from astropy.io import fits
 from astropy import units as u
+from astropy.table import Table
 from astropy import constants as const
 
 #Scipy imports
-from scipy.interpolate import InterpolatedUnivariateSpline
+from scipy.interpolate import InterpolatedUnivariateSpline, CubicSpline, Akima1DInterpolator
 from scipy import integrate
 from scipy.stats import powerlaw
 
 from pathlib import Path
+from Functions.f_nu_models import passband_flux, get_and_compare_mag
 
+
+# these things don't change the value because they get cancelled for color (only depends on SED which depends on temperature)
+R_sun = (1*u.Rsun).cgs.value
+d = (10*u.pc).cgs.value
+# F_0 in AB system, which is constant
+F_0 = (3631.00*u.Jy).cgs.value
 
 # Reads in Ascii file and returns wavelengths in cm and transmissions
 def ascii_to_array(filename):
@@ -23,6 +31,28 @@ def ascii_to_array(filename):
     # Probability of photon going through
     column2 = data['Transmission'].values
     return column1, column2
+
+# Displays .fits file as a table
+def fits_to_table(fileURL):
+    hdulist = fits.open(fileURL)
+    data = Table(hdulist[1].data)
+    print(data)
+
+# Converts units of f_lambda in fits file to per cm, returns new converted table of valeus
+def convert_fits_to_cm(fileURL):
+    hdul = fits.open(fileURL)
+    table_data = hdul[1].data.copy()
+    log_g_list = table_data.dtype.names[1:]
+    table = Table(table_data)
+    table_data['WAVELENGTH'] *= 1e-8
+    for log_g in log_g_list:
+        table_data[log_g] *= 1e8   
+    return table_data
+
+# Reads in Fits file and returns actual values of wavelength and flux
+def fits_to_wav_flux(fileURL, log_g):
+    table_data = convert_fits_to_cm(fileURL)
+    return table_data['WAVELENGTH']*u.cm, table_data[log_g]
 
 
 # Reads in Fits file and returns spline for flux at surface (Phoenix Model)
@@ -42,7 +72,56 @@ def fits_to_spline(fileURL, log_g):
     # convert from f_lambda to f_nu
     return InterpolatedUnivariateSpline(wavelengthArr_cm, f_lambda_table_per_cm*wavelengthArr_cm**2/const.c.cgs.value, k=1, ext="zeros")
 
+def wav_trans_to_band_flux(fileURL, log_g, transmission_curve_file):
+    wavelengths_band, transmission_band = ascii_to_array(transmission_curve_file)
+    wavelengths_band_cm = wavelengths_band.cgs
+    trans_band_spline = InterpolatedUnivariateSpline(wavelengths_band_cm, transmission_band, k=1, ext="zeros")
+    wavs_actual, flux_actual = fits_to_wav_flux(fileURL, log_g)
+    band_flux = passband_flux(flux_actual, trans_band_spline(wavs_actual.value), wavs_actual)
+    return band_flux
 
+def get_band_flux_dict(M_H, T_eff, log_g):
+    band_flux_dict = {}
+    bands = ["z", "Y", "i", "r"]
+    for b in bands:
+        trans_curve_band = f'CTIO/CTIO_DECam.{b}.txt'
+        filename = f'All_Phoenix_Models/phoenixm{str(M_H).replace(".", "")}_{T_eff}.fits'
+        flux = wav_trans_to_band_flux(filename, log_g, trans_curve_band)        
+        band_flux_dict[b] = flux
+    return band_flux_dict
+    
+# ----------------------------------------------------------
+def fits_to_cubic_spline(fileURL, log_g):
+    hdul = fits.open(fileURL)
+    data_fits = hdul[1].data
+    # Wavelengths from fits table
+    wavLen = data_fits['WAVELENGTH']
+    # f_lamda values for specific log(g) 
+    f_lambda = data_fits[log_g]
+    # Makes spline based table
+    # convert from Angstrom to cm
+    wavelengthArr_cm = 1e-8*wavLen
+    f_lambda_table_per_cm = f_lambda*1e8  
+    # Returns spline at surface based on Phoenix model
+    # convert from f_lambda to f_nu
+    return CubicSpline(wavelengthArr_cm, f_lambda_table_per_cm*wavelengthArr_cm**2/const.c.cgs.value)
+
+def fits_to_akima_spline(fileURL, log_g):
+    hdul = fits.open(fileURL)
+    data_fits = hdul[1].data
+    # Wavelengths from fits table
+    wavLen = data_fits['WAVELENGTH']
+    # f_lamda values for specific log(g) 
+    f_lambda = data_fits[log_g]
+    # Makes spline based table
+    # convert from Angstrom to cm
+    wavelengthArr_cm = 1e-8*wavLen
+    f_lambda_table_per_cm = f_lambda*1e8  
+    # Returns spline at surface based on Phoenix model
+    # convert from f_lambda to f_nu
+    return Akima1DInterpolator(wavelengthArr_cm, f_lambda_table_per_cm*wavelengthArr_cm**2/const.c.cgs.value)
+
+# __________________________________________________________
 # Finds nearest value (absolute value) in an array
 def find_nearest_value(target, array):
     target = float(target)
@@ -54,7 +133,7 @@ def find_nearest_value(target, array):
 def create_dict(foldername, glob_str):
     # Get folder
     path = Path(foldername)
-    path.glob(glob_str)
+    # path.glob(glob_str)
 
     # create dictionary : key is (T, log(g)) value is 'filename'
     file_dict = dict()
